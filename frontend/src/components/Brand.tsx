@@ -1,10 +1,12 @@
-import { Train } from "lucide-react";
-
 export function Brand({ subtitle }: { subtitle?: string }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-card">
-        <Train className="h-5 w-5" />
+      <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-primary shadow-card">
+        <img
+          src="/railway-logo.jpeg"
+          alt="Indian Railways logo"
+          className="h-full w-full object-cover"
+        />
       </div>
       <div className="min-w-0">
         <div className="text-sm font-bold tracking-wide text-primary">INDIAN RAILWAYS</div>

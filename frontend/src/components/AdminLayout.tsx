@@ -5,6 +5,7 @@ import {
   MessageSquareWarning,
   Users,
   BarChart3,
+  TrendingUp,
   LogOut,
   Menu,
   X,
@@ -21,6 +22,7 @@ const nav: NavItem[] = [
   { to: "/admin/complaints", icon: MessageSquareWarning, label: "Complaints" },
   { to: "/admin/users", icon: Users, label: "Manage Users" },
   { to: "/admin/analysis", icon: BarChart3, label: "TC Analysis" },
+   { to: "/admin/growth", icon: TrendingUp, label: "Admin Analysis" },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {

@@ -48,9 +48,13 @@ function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-soft via-surface to-background">
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-10">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-elevated">
-            <Train className="h-8 w-8" />
-          </div>
+          <div className="mb-4 h-20 w-20 overflow-hidden rounded-2xl shadow-elevated">
+  <img
+    src="/railway-logo.jpeg"
+    alt="Indian Railways Logo"
+    className="h-full w-full object-contain"
+  />
+</div>
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
             Indian Railways
           </div>

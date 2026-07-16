@@ -233,45 +233,47 @@ function CategoryCounter({
             <div className="mt-0.5 text-[11px] text-muted-foreground">{cat.hint}</div>
           </div>
           {/* Amount badge — tap to edit */}
-          {/* Amount badge — tap to edit */}
+          
           <button
             onClick={() => setShowAmt(true)}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-              value.amount > 0
-                ? "bg-primary text-primary-foreground"
-                : "border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90"
           >
             {value.amount > 0 ? formatINR(value.amount) : "Set ₹"}
           </button>
         </div>
 
-        {/* Tally counter */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onDecrement}
-            disabled={value.cases === 0}
-            className="grid h-11 w-11 place-items-center rounded-xl border border-border bg-background text-foreground transition-colors hover:bg-muted active:scale-95 disabled:opacity-30"
-          >
-            <Minus className="h-5 w-5" />
-          </button>
+       {/* Tally counter */}
+<div className="flex items-center justify-center">
+  <div className="flex items-center gap-5 rounded-2xl border border-blue-200 bg-white px-4 py-2 shadow-sm">
 
-          <div className="flex-1 text-center">
-            <div className={`text-4xl font-black tabular-nums ${active ? "text-primary" : "text-muted-foreground"}`}>
-              {value.cases}
-            </div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">cases</div>
-          </div>
+    <button
+      onClick={onDecrement}
+      disabled={value.cases === 0}
+      className="grid h-8 w-8 place-items-center rounded-full border border-blue-200 bg-white text-blue-500 hover:bg-blue-50 active:scale-95 disabled:opacity-40"
+    >
+      <Minus className="h-4 w-4" strokeWidth={2.5} />
+    </button>
 
-          {/* Big + button — this is the main action */}
-          <button
-            onClick={onIncrement}
-            className="grid h-14 w-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-card transition-transform active:scale-95"
-          >
-            <Plus className="h-7 w-7" />
-          </button>
-        </div>
+    <div className="text-center">
+      <div
+        className={`text-2xl font-black tabular-nums ${
+          active ? "text-primary" : "text-muted-foreground"
+        }`}
+      >
+        {value.cases}
       </div>
+      <div className="text-[9px] text-gray-400">Cases</div>
+    </div>
+
+    <button
+      onClick={onIncrement}
+      className="grid h-8 w-8 place-items-center rounded-full border border-blue-200 bg-white text-blue-500 hover:bg-blue-50 active:scale-95"
+    >
+      <Plus className="h-4 w-4" strokeWidth={2.5} />
+    </button>
+
+  </div>
+</div></div>
 
       {showAmt && (
         <AmountModal
