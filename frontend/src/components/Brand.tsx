@@ -10,8 +10,8 @@ export function Brand({ subtitle }: { subtitle?: string }) {
       </div>
       <div className="min-w-0">
         <div className="text-[14px] font-bold leading-snug tracking-normal text-primary sm:text-sm">
-          South East Central Railway
-          <span className="block">Nagpur Division</span>
+          SOUTH EAST CENTRAL RAILWAY
+          <span className="block">NAGPUR DIVISION</span>
         </div>
         {/* <div className="truncate text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
           {subtitle ?? "TC Daily Earning & Complaint System"}

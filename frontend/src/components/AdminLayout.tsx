@@ -48,7 +48,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-surface">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 shrink-0 border-r border-border bg-background transition-transform md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 flex-col border-r border-border bg-background transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -61,7 +61,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="space-y-1 p-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {nav.map((n) => {
             const Icon = n.icon;
             const active = isActive(n.to, n.exact);
@@ -79,7 +79,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="absolute inset-x-3 bottom-3">
+       <div className="border-t border-border p-3">
           <button
             onClick={async () => {
               await logout();
@@ -101,8 +101,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         />
       )}
 
-      <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-19 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
+    <div className="flex h-screen flex-1 flex-col overflow-hidden">
+        <header className="flex h-19 shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
           <button
             onClick={() => setOpen(true)}
             className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden"
@@ -132,7 +132,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="min-w-0 flex-1 overflow-x-hidden p-4 md:p-8">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">{children}</main>
       </div>
     </div>
 

@@ -165,7 +165,7 @@ useEffect(() => {
 
   // ── Auto-create Sheet rows for collectors with entries this month who don't
   // already have a row — never touches/overwrites existing rows. ──
- useEffect(() => {
+  useEffect(() => {
     if (!initialized.current || syncedThisSession.current) return;
     if (allEntries.length === 0 || allUsers.length === 0) return;
 
@@ -173,8 +173,8 @@ useEffect(() => {
 
     async function sync() {
       // Always re-fetch the latest rows directly from Firestore right before
-      // deciding what to create/update — never trust component state here,
-      // since a tab switch can remount this component before state catches up.
+      // deciding what to create — never trust component state here, since a
+      // tab switch can remount this component before state has caught up.
       const latestRows = await fetchAllSheetRows();
 
       const thisMonth = new Date().toISOString().slice(0, 7);
@@ -182,17 +182,20 @@ useEffect(() => {
         (u) => u.role?.toLowerCase() === "tc" || u.role?.toLowerCase() === "collector",
       );
 
-      const rowsByKey = new Map(
+      // Match on collectorId + sourceMonth so a new row is still created next
+      // month, but this month's row is never duplicated.
+      const existingKeys = new Set(
         latestRows
           .filter((r) => r.collectorId && r.sourceMonth)
-          .map((r) => [`${r.collectorId}__${r.sourceMonth}`, r]),
+          .map((r) => `${r.collectorId}__${r.sourceMonth}`),
       );
 
       let nextOrder = latestRows.length > 0 ? Math.max(...latestRows.map((r) => r.order)) + 1 : 1;
       const toCreate: Omit<SheetRow, "id">[] = [];
-      const toUpdate: { id: string; patch: Partial<Omit<SheetRow, "id">> }[] = [];
 
       for (const collector of collectors) {
+        if (existingKeys.has(`${collector.id}__${thisMonth}`)) continue;
+
         const monthEntries = allEntries.filter(
           (e) =>
             e.collectorId === collector.id &&
@@ -201,55 +204,31 @@ useEffect(() => {
         );
         if (monthEntries.length === 0) continue;
 
-        const fresh = buildSheetRowFromEntries(
-          { id: collector.id, name: collector.name, base: collector.base },
-          monthEntries,
-          nextOrder,
+        toCreate.push(
+          buildSheetRowFromEntries(
+            { id: collector.id, name: collector.name, base: collector.base },
+            monthEntries,
+            nextOrder++,
+          ),
         );
-
-        const existing = rowsByKey.get(`${collector.id}__${thisMonth}`);
-
-        if (!existing) {
-          toCreate.push(fresh);
-          nextOrder += 1;
-        } else if (existing.id) {
-          // Silently refresh only the calculated fields — never touch
-          // base/name, which the admin may have manually edited.
-          toUpdate.push({
-            id: existing.id,
-            patch: { A: fresh.A, B: fresh.B, C: fresh.C, D: fresh.D, E: fresh.E, wd: fresh.wd },
-          });
-        }
       }
 
+      if (toCreate.length === 0) return;
+
       try {
-        const created = toCreate.length
-          ? await Promise.all(toCreate.map(async (row) => ({ ...row, id: await addSheetRow(row) })))
-          : [];
-
-        if (toUpdate.length) {
-          await Promise.all(toUpdate.map(({ id, patch }) => updateSheetRow(id, patch)));
-        }
-
-        if (created.length || toUpdate.length) {
-          setRows((rs) => {
-            const patchMap = new Map(toUpdate.map((u) => [u.id, u.patch]));
-            const refreshed = rs.map((r) =>
-              r.id && patchMap.has(r.id) ? { ...r, ...patchMap.get(r.id) } : r,
-            );
-            return [...refreshed, ...created];
-          });
-        }
-        if (created.length) {
-          toast.success(`Added ${created.length} new row(s) from entries`);
-        }
+        const created = await Promise.all(
+          toCreate.map(async (row) => ({ ...row, id: await addSheetRow(row) })),
+        );
+        setRows((rs) => [...rs, ...created]);
+        toast.success(`Added ${created.length} new row(s) from entries`);
       } catch {
-        toast.error("Failed to sync rows from entries");
+        toast.error("Failed to auto-create some rows from entries");
       }
     }
 
     sync();
   }, [allEntries, allUsers]);
+
   function scheduleSave(id: string, patch: Partial<Omit<SheetRow, "id">>) {
     clearTimeout(saveTimers.current[id]);
     saveTimers.current[id] = setTimeout(async () => {
@@ -387,10 +366,10 @@ useEffect(() => {
             <table className="w-full min-w-[2200px] text-xs">
               <thead className="sticky top-0 z-10 bg-muted/90 text-center font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
                 <tr>
-                  <th rowSpan={2} className={`sticky left-0 z-20 w-14 border border-border bg-muted px-2 py-2 ${thick}`}>Sl No</th>
-                  <th rowSpan={2} className={`sticky left-14 z-20 w-20 border border-border bg-muted px-2 py-2 ${thick}`}>Base</th>
-                  <th rowSpan={2} className={`sticky left-[136px] z-20 w-44 border border-border bg-muted px-2 py-2 ${thick}`}>Name of Staff</th>
-                  <th rowSpan={2} className={`sticky left-[312px] z-20 w-16 border border-border bg-muted px-2 py-2 ${thick}`}>WD</th>
+                  <th rowSpan={2} className={`w-14 border border-border bg-muted px-2 py-2 ${thick}`}>Sl No</th>
+                  <th rowSpan={2} className={`w-20 border border-border bg-muted px-2 py-2 ${thick}`}>Base</th>
+                  <th rowSpan={2} className={`w-44 border border-border bg-muted px-2 py-2 ${thick}`}>Name of Staff</th>
+                  <th rowSpan={2} className={`w-16 border border-border bg-muted px-2 py-2 ${thick}`}>WD</th>
 
                   <th colSpan={4} className={`border border-border px-2 py-2 ${thick}`}>A Cases</th>
                   <th colSpan={4} className={`border border-border px-2 py-2 ${thick}`}>B Cases</th>
@@ -453,22 +432,22 @@ useEffect(() => {
 
                   return (
                     <tr key={row.id} className="text-center hover:bg-muted/30">
-                      <td className={`sticky left-0 z-10 w-14 border border-border bg-card px-2 py-1.5 font-semibold ${thick}`}>{i + 1}</td>
-                      <td className={`sticky left-14 z-10 w-20 border border-border bg-card p-0 ${thick}`}>
+                      <td className={`w-14 border border-border px-2 py-1.5 font-semibold ${thick}`}>{i + 1}</td>
+                      <td className={`w-20 border border-border p-0 ${thick}`}>
                         <input
                           value={row.base}
                           onChange={(e) => patchRow(row.id, { base: e.target.value })}
                           className="w-full bg-transparent px-2 py-1.5 text-center font-semibold outline-none"
                         />
                       </td>
-                      <td className={`sticky left-[136px] z-10 w-44 border border-border bg-card p-0 ${thick}`}>
+                      <td className={`w-44 border border-border p-0 ${thick}`}>
                         <input
                           value={row.name}
                           onChange={(e) => patchRow(row.id, { name: e.target.value })}
                           className="w-full bg-transparent px-2 py-1.5 text-left outline-none"
                         />
                       </td>
-                      <td className={`sticky left-[312px] z-10 w-16 border border-border bg-card p-0 ${thick}`}>
+                      <td className={`w-16 border border-border p-0 ${thick}`}>
                         <input
                           type="number"
                           value={row.wd || ""}
