@@ -11,6 +11,7 @@ import {
   type SquadName,
 } from "@/services/entries";
 import { formatINR, formatDate } from "@/lib/format";
+import { isRestrictedDuty } from "@/lib/dutyStatus";
 import { useMemo, useState } from "react";
 import {
   Search, Plus, ClipboardList, Train, Pencil, X,
@@ -38,15 +39,23 @@ const CATEGORIES = [
 ] as const;
 type CatKey = (typeof CATEGORIES)[number]["key"];
 
-const EDIT_WINDOW_MS = 48 * 60 * 60 * 1000; // 48 hours
-
+// Editable only same-day (until midnight of the submission date) AND only once
 function canEditEntry(e: Entry): boolean {
-  if (e.status !== "submitted" || !e.submittedAt) return false;
-  const submittedMs = e.submittedAt.toDate().getTime();
-  return Date.now() - submittedMs < EDIT_WINDOW_MS;
+  if (e.status !== "submitted") return false;
+  if (e.edited) return false;
+  const endOfSubmissionDay = new Date(`${e.date}T23:59:59.999`);
+  return Date.now() <= endOfSubmissionDay.getTime();
 }
+
+function editDisabledReason(e: Entry): string | undefined {
+  if (e.edited) return "You've already used your one edit for this entry";
+  if (!canEditEntry(e)) return "Edit window has closed for this date";
+  return undefined;
+}
+
 function EntriesPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
+  const restricted = isRestrictedDuty(profile?.dutyStatus, profile?.dutyStatusSetAt);
   const queryClient = useQueryClient();
   const { data: entries = [] } = useQuery({
     queryKey: ["entries", user?.uid],
@@ -78,12 +87,14 @@ function EntriesPage() {
           <h1 className="text-2xl font-bold">My Entries</h1>
           <p className="text-sm text-muted-foreground">{entries.length} total submissions</p>
         </div>
-        <Link
-          to="/entry/new"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-card"
-        >
-          <Plus className="h-4 w-4" /> New
-        </Link>
+        {!restricted && (
+          <Link
+            to="/entry/new"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-card"
+          >
+            <Plus className="h-4 w-4" /> New
+          </Link>
+        )}
       </header>
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
@@ -105,36 +116,40 @@ function EntriesPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState />
+        <EmptyState restricted={restricted} />
       ) : (
         <>
           <div className="space-y-3 md:hidden">
-            {filtered.map((e) => (
-              <div key={e.id} className="rounded-2xl border border-border bg-card p-4 shadow-card">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">{formatDate(e.date)}</div>
-                  <span className="chip">{e.working}</span>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <Stat label="Train" value={e.trainNumber} />
-                  <Stat label="Cases" value={String(e.totalCases)} />
-                  <Stat label="Amount" value={formatINR(e.totalAmount)} highlight />
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-muted">
-                    View Details
-                  </button>
-                  {canEditEntry(e) && (
+            {filtered.map((e) => {
+              const editable = canEditEntry(e);
+              const reason = editDisabledReason(e);
+              return (
+                <div key={e.id} className="rounded-2xl border border-border bg-card p-4 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">{formatDate(e.date)}</div>
+                    <span className="chip">{e.working}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <Stat label="Train" value={e.trainNumber} />
+                    <Stat label="Cases" value={String(e.totalCases)} />
+                    <Stat label="Amount" value={formatINR(e.totalAmount)} highlight />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-muted">
+                      View Details
+                    </button>
                     <button
-                      onClick={() => setEditingEntry(e)}
-                      className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
+                      onClick={() => editable && setEditingEntry(e)}
+                      disabled={!editable}
+                      title={reason}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                     >
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-card md:block">
@@ -150,33 +165,37 @@ function EntriesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((e) => (
-                  <tr key={e.id} className="hover:bg-muted/40">
-                    <td className="px-4 py-3 font-medium">{formatDate(e.date)}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 font-mono font-semibold">
-                        <Train className="h-3.5 w-3.5 text-primary" /> {e.trainNumber}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="chip">{e.working}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold">{e.totalCases}</td>
-                    <td className="px-4 py-3 text-right font-bold text-primary">
-                      {formatINR(e.totalAmount)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {canEditEntry(e) && (
+                {filtered.map((e) => {
+                  const editable = canEditEntry(e);
+                  const reason = editDisabledReason(e);
+                  return (
+                    <tr key={e.id} className="hover:bg-muted/40">
+                      <td className="px-4 py-3 font-medium">{formatDate(e.date)}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 font-mono font-semibold">
+                          <Train className="h-3.5 w-3.5 text-primary" /> {e.trainNumber}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="chip">{e.working}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">{e.totalCases}</td>
+                      <td className="px-4 py-3 text-right font-bold text-primary">
+                        {formatINR(e.totalAmount)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         <button
-                          onClick={() => setEditingEntry(e)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                          onClick={() => editable && setEditingEntry(e)}
+                          disabled={!editable}
+                          title={reason}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -205,7 +224,7 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
   );
 }
 
-function EmptyState() {
+function EmptyState({ restricted }: { restricted: boolean }) {
   return (
     <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
       <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-primary-soft text-primary">
@@ -215,15 +234,18 @@ function EmptyState() {
       <p className="mt-1 text-sm text-muted-foreground">
         Submit your first daily entry to see it here.
       </p>
-      <Link
-        to="/entry/new"
-        className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-      >
-        <Plus className="h-4 w-4" /> New Entry
-      </Link>
+      {!restricted && (
+        <Link
+          to="/entry/new"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" /> New Entry
+        </Link>
+      )}
     </div>
   );
 }
+
 function EditEntryModal({
   entry,
   onClose,
@@ -266,8 +288,9 @@ function EditEntryModal({
         A: cats.A, B: cats.B, C: cats.C, D: cats.D, E: cats.E, smoking: cats.smoking,
         totalCases,
         totalAmount,
+        edited: true, // lock further edits after this save
       });
-      toast.success("Entry updated");
+      toast.success("Entry updated — this was your one allowed edit for this entry");
       onSaved();
       onClose();
     } catch {

@@ -4,6 +4,7 @@ import { CollectorLayout } from "@/components/CollectorLayout";
 import { useAuth } from "@/services/AuthContext";
 import { fetchMyEntries } from "@/services/entries";
 import { formatINR } from "@/lib/format";
+import { isRestrictedDuty } from "@/lib/dutyStatus";
 import {
   Plus,
   FileText,
@@ -12,6 +13,7 @@ import {
   IndianRupee,
   Briefcase,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/home")({
@@ -41,6 +43,31 @@ function HomePage() {
   const todayCases = todayEntries.reduce((a, e) => a + e.totalCases, 0);
 
   if (authLoading || !user || !profile) return null;
+
+  const restricted = isRestrictedDuty(profile.dutyStatus, profile.dutyStatusSetAt);
+
+  if (restricted) {
+    return (
+      <CollectorLayout>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+          <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-warning/15 text-warning-foreground">
+            <AlertCircle className="h-8 w-8" />
+          </div>
+          <h1 className="text-xl font-bold">You're marked as {profile.dutyStatus} today</h1>
+          <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+            The dashboard and new entries are unavailable while you're on {profile.dutyStatus}.
+            You can still view and edit your recently submitted entries.
+          </p>
+          <Link
+            to="/entries"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-card"
+          >
+            <ClipboardList className="h-4 w-4" /> Go to My Entries
+          </Link>
+        </div>
+      </CollectorLayout>
+    );
+  }
 
   const actions = [
     {

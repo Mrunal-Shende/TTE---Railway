@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatINR } from "@/lib/format";
+import { isRestrictedDuty } from "@/lib/dutyStatus";
 
 export const Route = createFileRoute("/entry/new")({
   head: () => ({ meta: [{ title: "New Daily Entry · TC System" }] }),
@@ -118,15 +119,16 @@ function AmountModal({
   onClose,
 }: {
   label: string;
-  value: number;
-  onSave: (v: number) => void;
+  value: FineCategory;
+  onSave: (breakdown: { caseAmt: number; penaltyAmt: number; gstAmt: number }) => void;
   onClose: () => void;
 }) {
-  // Split the existing total (best-effort) into two editable fields
-  const [caseAmt, setCaseAmt] = useState(value === 0 ? "" : String(value));
-  const [fineAmt, setFineAmt] = useState("");
+  // Pre-fill from previously saved breakdown, so reopening shows all 3 values
+  const [caseAmt, setCaseAmt] = useState(value.caseAmt ? String(value.caseAmt) : "");
+  const [fineAmt, setFineAmt] = useState(value.penaltyAmt ? String(value.penaltyAmt) : "");
+  const [gstAmt, setGstAmt] = useState(value.gstAmt ? String(value.gstAmt) : "");
 
-  const total = (parseInt(caseAmt, 10) || 0) + (parseInt(fineAmt, 10) || 0);
+  const total = (parseInt(caseAmt, 10) || 0) + (parseInt(fineAmt, 10) || 0) + (parseInt(gstAmt, 10) || 0);
 
   return (
     <div
@@ -156,7 +158,7 @@ function AmountModal({
 
           <div>
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Fine Amount
+              Penalty Amount
             </div>
             <div className="flex items-center gap-2 rounded-xl border border-input bg-background px-3 py-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
               <IndianRupee className="h-4 w-4 text-muted-foreground" />
@@ -164,6 +166,22 @@ function AmountModal({
                 inputMode="numeric"
                 value={fineAmt}
                 onChange={(e) => setFineAmt(e.target.value.replace(/\D/g, ""))}
+                placeholder="0"
+                className="flex-1 bg-transparent text-xl font-bold outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              GST Amount
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-input bg-background px-3 py-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+              <IndianRupee className="h-4 w-4 text-muted-foreground" />
+              <input
+                inputMode="numeric"
+                value={gstAmt}
+                onChange={(e) => setGstAmt(e.target.value.replace(/\D/g, ""))}
                 placeholder="0"
                 className="flex-1 bg-transparent text-xl font-bold outline-none"
               />
@@ -185,7 +203,14 @@ function AmountModal({
             Cancel
           </button>
           <button
-            onClick={() => { onSave(total); onClose(); }}
+            onClick={() => {
+              onSave({
+                caseAmt: parseInt(caseAmt, 10) || 0,
+                penaltyAmt: parseInt(fineAmt, 10) || 0,
+                gstAmt: parseInt(gstAmt, 10) || 0,
+              });
+              onClose();
+            }}
             className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
           >
             Save
@@ -208,7 +233,7 @@ function CategoryCounter({
   value: FineCategory;
   onIncrement: () => void;
   onDecrement: () => void;
-  onAmountChange: (v: number) => void;
+  onAmountChange: (breakdown: { caseAmt: number; penaltyAmt: number; gstAmt: number }) => void;
 }) {
   const [showAmt, setShowAmt] = useState(false);
   const active = value.cases > 0;
@@ -275,10 +300,10 @@ function CategoryCounter({
   </div>
 </div></div>
 
-      {showAmt && (
+     {showAmt && (
         <AmountModal
           label={cat.label}
-          value={value.amount}
+          value={value}
           onSave={onAmountChange}
           onClose={() => setShowAmt(false)}
         />
@@ -380,13 +405,22 @@ const [rows, setRows] = useState<TrainRow[]>([newRow()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function scheduleSave(localId: string, updatedRows: TrainRow[]) {
+ function scheduleSave(localId: string, updatedRows: TrainRow[]) {
     clearTimeout(saveTimers.current[localId]);
     // Short debounce to batch rapid taps
     saveTimers.current[localId] = setTimeout(() => triggerSave(localId, updatedRows), 150);
   }
 
-    if (authLoading || !user || !profile) return null;
+  // Block access entirely if the TC is on REST/Leave/etc. — send them to My Entries instead
+  useEffect(() => {
+    if (!profile) return;
+    if (isRestrictedDuty(profile.dutyStatus, profile.dutyStatusSetAt)) {
+      toast.error("New entries are disabled while you're on leave/rest");
+      navigate({ to: "/entries" });
+    }
+  }, [profile, navigate]);
+
+  if (authLoading || !user || !profile) return null;
 
 
   // ── Tally increment / decrement ──
@@ -414,10 +448,25 @@ const [rows, setRows] = useState<TrainRow[]>([newRow()]);
     });
   }
 
-  function setAmount(localId: string, key: CatKey, amount: number) {
+ function setAmount(
+    localId: string,
+    key: CatKey,
+    breakdown: { caseAmt: number; penaltyAmt: number; gstAmt: number },
+  ) {
     setRows((rs) => {
       const next = rs.map((r) =>
-        r.localId === localId ? { ...r, [key]: { ...r[key], amount } } : r
+        r.localId === localId
+          ? {
+              ...r,
+              [key]: {
+                ...r[key],
+                caseAmt: breakdown.caseAmt,
+                penaltyAmt: breakdown.penaltyAmt,
+                gstAmt: breakdown.gstAmt,
+                amount: breakdown.caseAmt + breakdown.penaltyAmt + breakdown.gstAmt,
+              },
+            }
+          : r
       );
       scheduleSave(localId, next);
       return next;
@@ -594,7 +643,7 @@ const [rows, setRows] = useState<TrainRow[]>([newRow()]);
                   </div>
 
                   {/* Status shortcuts */}
-                  <div>
+                  {/* <div>
                     <SectionLabel>Quick status (no train today)</SectionLabel>
                     <div className="flex flex-wrap gap-1.5">
                       {TRAIN_STATUSES.map((s) => (
@@ -611,7 +660,7 @@ const [rows, setRows] = useState<TrainRow[]>([newRow()]);
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* ── Tally counters — only show if actual train ── */}
                   {!statusOnly && (

@@ -6,6 +6,7 @@ import {
   Users,
   BarChart3,
   TrendingUp,
+  Table,
   LogOut,
   Menu,
   X,
@@ -23,6 +24,7 @@ const nav: NavItem[] = [
   { to: "/admin/users", icon: Users, label: "Manage Users" },
   { to: "/admin/analysis", icon: BarChart3, label: "TC Analysis" },
    { to: "/admin/growth", icon: TrendingUp, label: "Admin Analysis" },
+   { to: "/admin/sheet", icon: Table, label: "Sheet" },
 ];
 
 export function AdminLayout({ children }: { children: ReactNode }) {
@@ -46,11 +48,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-surface">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-border bg-background transition-transform md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-72 shrink-0 border-r border-border bg-background transition-transform md:static md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center justify-between border-b border-border px-4">
+        <div className="flex h-19 items-center justify-between border-b border-border px-5">
           <Brand subtitle="Admin Console" />
           <button
             onClick={() => setOpen(false)}
@@ -100,7 +102,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
+        <header className="sticky top-0 z-20 flex h-19 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
           <button
             onClick={() => setOpen(true)}
             className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground hover:bg-muted md:hidden"
@@ -130,7 +132,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-8">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 md:p-8">{children}</main>
       </div>
     </div>
 

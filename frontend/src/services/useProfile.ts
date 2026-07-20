@@ -7,11 +7,13 @@ export interface UserProfile {
   role: "admin" | "tc";
   base: string;
   mobile: string;
-  pfNo?: string;           // PF Number (alphanumeric)
-  employee_id?: string;    // legacy — keep for backward compat
+  pfNo?: string;
+  employee_id?: string;
   joining?: string;
   status?: "active" | "disabled";
   lastLogin?: string;
+  dutyStatus?: string;
+  dutyStatusSetAt?: string;
 }
 
 export async function fetchProfile(uid: string): Promise<UserProfile | null> {
@@ -41,6 +43,14 @@ export async function createDefaultProfile(uid: string, email: string): Promise<
 
   await setDoc(doc(db, "users", uid), defaultProfile);
   return defaultProfile;
+}
+
+export async function updateDutyStatus(uid: string, status: string): Promise<void> {
+  await setDoc(
+    doc(db, "users", uid),
+    { dutyStatus: status, dutyStatusSetAt: new Date().toISOString() },
+    { merge: true },
+  );
 }
 
 export async function updateLastLogin(uid: string): Promise<void> {

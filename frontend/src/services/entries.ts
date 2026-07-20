@@ -44,6 +44,9 @@ export type TrainStatus =
 export interface FineCategory {
   cases: number;
   amount: number;
+  caseAmt?: number;
+  penaltyAmt?: number;
+  gstAmt?: number;
 }
 
 // One row in the spreadsheet = one train on one date
@@ -63,11 +66,12 @@ export interface Entry {
   D: FineCategory;
   E: FineCategory;
   smoking: FineCategory;
-  totalCases: number;
+ totalCases: number;
   totalAmount: number;
   status: "draft" | "submitted"; // draft = saved but not submitted; submitted = sent to admin
   createdAt?: Timestamp;
   submittedAt?: Timestamp;
+  edited?: boolean; // true once the TC has used their one allowed edit
 }
 
 export async function fetchMyEntries(uid: string): Promise<Entry[]> {

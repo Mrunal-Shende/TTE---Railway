@@ -4,8 +4,9 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Brand } from "./Brand";
 import { toast } from "sonner";
 import { useAuth } from "@/services/AuthContext";
+import { isRestrictedDuty } from "@/lib/dutyStatus";
 
-const tabs = [
+const ALL_TABS = [
   { to: "/home", icon: Home, label: "Home" },
   { to: "/entry/new", icon: Plus, label: "Entry" },
   { to: "/complaint/new", icon: FileText, label: "Complaint" },
@@ -16,6 +17,8 @@ const tabs = [
 export function CollectorLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { user, profile, logout } = useAuth();
+  const restricted = isRestrictedDuty(profile?.dutyStatus, profile?.dutyStatusSetAt);
+  const tabs = restricted ? ALL_TABS.filter((t) => t.to !== "/entry/new") : ALL_TABS;
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [mounted, setMounted] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);

@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import {
   TrendingUp, TrendingDown, IndianRupee, ClipboardList,
   MessageSquareWarning, Users, Train, Award, Landmark,
-  CheckCircle2, Clock,
+  CheckCircle2, Clock, Calendar,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/growth")({
@@ -21,6 +21,77 @@ type RangeDays = 7 | 14 | 30;
 
 function monthKey(dateStr: string) {
   return dateStr.slice(0, 7); // YYYY-MM
+}
+
+type ViewMode = "day" | "month" | "year" | "range";
+
+function getPeriodRange(
+  mode: ViewMode,
+  selectedDate: string,
+  selectedMonth: string,
+  selectedYear: string,
+  rangeFrom: string,
+  rangeTo: string,
+) {
+  if (mode === "range") {
+    const from = rangeFrom || rangeTo;
+    const to = rangeTo || rangeFrom;
+    const fromD = new Date(`${from}T00:00:00`);
+    const toD = new Date(`${to}T00:00:00`);
+    const spanDays = Math.max(1, Math.round((toD.getTime() - fromD.getTime()) / 86400000) + 1);
+    const prevTo = new Date(fromD);
+    prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - (spanDays - 1));
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const label = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    return {
+      start: from,
+      end: to,
+      prevStart: fmt(prevFrom),
+      prevEnd: fmt(prevTo),
+      label: `${label(fromD)} – ${label(toD)}`,
+      prevLabel: `${label(prevFrom)} – ${label(prevTo)}`,
+    };
+  }
+  if (mode === "day") {
+    const d = new Date(`${selectedDate}T00:00:00`);
+    const prev = new Date(d);
+    prev.setDate(prev.getDate() - 1);
+    const prevStr = prev.toISOString().slice(0, 10);
+    return {
+      start: selectedDate,
+      end: selectedDate,
+      prevStart: prevStr,
+      prevEnd: prevStr,
+      label: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      prevLabel: prev.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+    };
+  }
+  if (mode === "month") {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const prevDate = new Date(y, m - 2, 1);
+    const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const prevLastDay = new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 0).getDate();
+    return {
+      start: `${selectedMonth}-01`,
+      end: `${selectedMonth}-${String(lastDay).padStart(2, "0")}`,
+      prevStart: `${prevMonthStr}-01`,
+      prevEnd: `${prevMonthStr}-${String(prevLastDay).padStart(2, "0")}`,
+      label: new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
+      prevLabel: prevDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
+    };
+  }
+  const y = Number(selectedYear);
+  return {
+    start: `${selectedYear}-01-01`,
+    end: `${selectedYear}-12-31`,
+    prevStart: `${y - 1}-01-01`,
+    prevEnd: `${y - 1}-12-31`,
+    label: selectedYear,
+    prevLabel: String(y - 1),
+  };
 }
 
 function pctChange(current: number, previous: number): number | null {
@@ -62,13 +133,23 @@ function AdminGrowthPage() {
   });
   const { data: users = [] } = useQuery({ queryKey: ["admin", "users"], queryFn: fetchAllUsers });
 
-  const [rangeDays, setRangeDays] = useState<RangeDays>(7);
-
-  const today = new Date().toISOString().slice(0, 10);
+ const today = new Date().toISOString().slice(0, 10);
   const thisMonth = today.slice(0, 7);
   const lastMonthDate = new Date();
   lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
   const lastMonth = lastMonthDate.toISOString().slice(0, 7);
+
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(thisMonth);
+  const [selectedYear, setSelectedYear] = useState(today.slice(0, 4));
+  const [rangeFrom, setRangeFrom] = useState(today);
+  const [rangeTo, setRangeTo] = useState(today);
+
+  const period = useMemo(
+    () => getPeriodRange(viewMode, selectedDate, selectedMonth, selectedYear, rangeFrom, rangeTo),
+    [viewMode, selectedDate, selectedMonth, selectedYear, rangeFrom, rangeTo],
+  );
 
   const submitted = useMemo(() => entries.filter((e) => e.status === "submitted"), [entries]);
 
@@ -81,15 +162,10 @@ function AdminGrowthPage() {
   );
 
   // Date-range boundary for the selected filter (7D / 14D / 30D)
-  const rangeStartDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - (rangeDays - 1));
-    return d.toISOString().slice(0, 10);
-  }, [rangeDays]);
-
   const rangeEntries = useMemo(
-    () => submitted.filter((e) => e.date >= rangeStartDate && e.date <= today),
-    [submitted, rangeStartDate, today],
+    () => submitted.filter((e) => e.date >= period.start && e.date <= period.end),
+    [submitted, period],
+  
   );
 
   // Quick summary totals for the selected range
@@ -99,9 +175,9 @@ function AdminGrowthPage() {
     return { revenue, cases };
   }, [rangeEntries]);
 
-  const stats = useMemo(() => {
-    const thisMonthEntries = submitted.filter((e) => monthKey(e.date) === thisMonth);
-    const lastMonthEntries = submitted.filter((e) => monthKey(e.date) === lastMonth);
+const stats = useMemo(() => {
+    const thisMonthEntries = submitted.filter((e) => e.date >= period.start && e.date <= period.end);
+    const lastMonthEntries = submitted.filter((e) => e.date >= period.prevStart && e.date <= period.prevEnd);
 
     const revenueThis = thisMonthEntries.reduce((a, e) => a + (e.totalAmount ?? 0), 0);
     const revenueLast = lastMonthEntries.reduce((a, e) => a + (e.totalAmount ?? 0), 0);
@@ -128,26 +204,38 @@ function AdminGrowthPage() {
       resolvedCount,
       openCount: complaints.length - resolvedCount,
     };
-  }, [submitted, complaints, collectors, thisMonth, lastMonth, today]);
-
+}, [submitted, complaints, collectors, period, today]);
   // Revenue trend chart data — respects the selected range filter
+  // Revenue trend chart data — day-wise within a month, or month-wise within a year
   const dailyTrend = useMemo(() => {
+    if (viewMode === "year") {
+      const y = Number(selectedYear);
+      const months: { date: string; label: string; amount: number }[] = [];
+      for (let m = 0; m < 12; m++) {
+        const monthStr = `${y}-${String(m + 1).padStart(2, "0")}`;
+        const amount = submitted
+          .filter((e) => monthKey(e.date) === monthStr)
+          .reduce((a, e) => a + (e.totalAmount ?? 0), 0);
+        months.push({
+          date: monthStr,
+          label: new Date(y, m, 1).toLocaleDateString("en-IN", { month: "short" }),
+          amount,
+        });
+      }
+      return months;
+    }
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
     const days: { date: string; label: string; amount: number }[] = [];
-    for (let i = rangeDays - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+    for (let d = 1; d <= lastDay; d++) {
+      const dateStr = `${selectedMonth}-${String(d).padStart(2, "0")}`;
       const amount = submitted
         .filter((e) => e.date === dateStr)
         .reduce((a, e) => a + (e.totalAmount ?? 0), 0);
-      days.push({
-        date: dateStr,
-        label: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
-        amount,
-      });
+      days.push({ date: dateStr, label: String(d), amount });
     }
     return days;
-  }, [submitted, rangeDays]);
+  }, [submitted, viewMode, selectedMonth, selectedYear]);
 
   const maxDaily = Math.max(...dailyTrend.map((d) => d.amount), 1);
 
@@ -245,34 +333,75 @@ function AdminGrowthPage() {
     <AdminLayout>
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Admin Analysis</h1>
-        <p className="text-sm text-muted-foreground">
-          Growth &amp; performance overview — this month vs last month.
+       <p className="text-sm text-muted-foreground">
+          Growth &amp; performance overview — {period.label} vs {period.prevLabel}.
         </p>
       </div>
 
-      {/* ── Filter range + quick summary cards ── */}
-      <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Filter Range
-          </div>
-          <div className="flex gap-1.5">
-            {([7, 14, 30] as RangeDays[]).map((d) => (
-              <button
-                key={d}
-                onClick={() => setRangeDays(d)}
-                className={`flex-1 rounded-lg border py-1.5 text-xs font-bold transition-colors ${
-                  rangeDays === d
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {d}D
-              </button>
-            ))}
-          </div>
+      {/* ── Period selector (Day / Month / Year) for KPI comparison ── */}
+      <section className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-xl border border-border bg-card p-1">
+          {(["day", "month", "year", "range"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
+                viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
         </div>
+        {viewMode === "day" && (
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none"
+          />
+        )}
+        {viewMode === "month" && (
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none"
+          />
+        )}
+        {viewMode === "year" && (
+          <input
+            type="number"
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="w-24 rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none"
+          />
+        )}
+        {viewMode === "range" && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+              className="rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none"
+            />
+            <span className="text-xs text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+              className="rounded-xl border border-input bg-card px-3 py-2 text-sm outline-none"
+            />
+          </div>
+        )}
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Calendar className="h-3.5 w-3.5" /> Comparing {period.label} vs {period.prevLabel}
+        </span>
+      </section>
 
+      {/* ── Filter range + quick summary cards ── */}
+      {/* ── Quick summary cards (period-based) ── */}
+      <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="rounded-2xl border border-border bg-primary-soft p-4 shadow-card">
           <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-primary">
             Total Revenue
@@ -302,13 +431,13 @@ function AdminGrowthPage() {
       <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <RingKpiCard
           icon={IndianRupee}
-          label="Revenue this month"
+          label={`Revenue — ${period.label}`}
           value={formatINR(stats.revenueThis)}
           growth={stats.revenueGrowth}
         />
         <RingKpiCard
           icon={ClipboardList}
-          label="Cases this month"
+          label={`Cases — ${period.label}`}
           value={String(stats.casesThis)}
           growth={stats.casesGrowth}
         />
@@ -329,8 +458,8 @@ function AdminGrowthPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Smooth area chart — revenue trend, respects filter range */}
         <div className="rounded-2xl border border-border bg-card p-5 shadow-card lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Revenue Trend — Last {rangeDays} Days
+         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Revenue Trend — {period.label}
           </h2>
           <div className="relative">
             <svg
