@@ -40,7 +40,7 @@ const WORKING_IN_OPTIONS: WorkingIn[] = ["SQD", "LINK", "stn"];
 
 const SQUAD_OPTIONS: SquadName[] = [
   "VIRAT", "VEDANT", "VIJAY", "VIKRANT", "VIHAN",
-  "OPEN", "ALFA", "BRAVO", "CHARLI", "TEJAS",
+  "OPEN", "ALFA", "BRAVO", "CHARLI", "TEJAS", "NAG-MISC" ,"GONDIA", "DGG-MISC SQD", "NIR-MISC SQD",
 ];
 
 const TRAIN_STATUSES = ["REST", "LAP", "CL", "SCL", "CCL", "LEAVE", "SICK", "ML", "STN"];

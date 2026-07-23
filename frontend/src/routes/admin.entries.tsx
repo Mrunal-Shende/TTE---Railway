@@ -1,11 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
-import { fetchAllEntries, type Entry } from "@/services/entries";
+import {
+  fetchAllEntries,
+  updateAdminRemark,
+  toggleEntryFlag,
+  type Entry,
+} from "@/services/entries";
 import { fetchAllUsers } from "@/services/users";
 import { formatINR, formatDate } from "@/lib/format";
 import { useMemo, useState, useEffect } from "react";
-import { Download, Search } from "lucide-react";
+import { Download, Search, X, Save, Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -30,36 +35,26 @@ function exportToExcel(entries: Entry[], usersMap: Record<string, { name: string
     return;
   }
 
-  // Group entries by date for separate sheets
   const byDate: Record<string, Entry[]> = {};
   for (const e of entries) {
     (byDate[e.date] = byDate[e.date] ?? []).push(e);
   }
 
   const wb = XLSX.utils.book_new();
-
-  // Sort dates ascending
   const dates = Object.keys(byDate).sort();
 
   for (const date of dates) {
     const dayEntries = byDate[date];
-    const sheetLabel = toSheetDate(date); // DD.MM.YY
+    const sheetLabel = toSheetDate(date);
 
-    // Build rows matching the exact Google Sheet column order:
-    // Sl No | DATE | Base | NAME | PF No. | Mobile No. | WORKING IN | (squad) | (gap) | TRAIN NO.
-    // | A CASE | A AMT | B CASE | B AMT | C CASE | C AMT | D CASE | D AMT | E CASE | E AMT
-    // | SMOK CASE | SMOK AMT | TTL CASE | TTL AMT
-
-    // Header row 1: title
     const title = [`Daily Earning of individual squad TTE'S on dt ${sheetLabel}`];
 
-    // Header row 2: column names
     const headers = [
       "Sl No.", "DATE", "Base", "NAME", "PF No.", "Mobile No.", "WORKING IN", "", "",
       "TRAIN NO.",
       "A CASE", "A AMT", "B CASE", "B AMT", "C CASE", "C AMT",
       "D CASE", "D AMT", "E CASE", "E AMT",
-      "SMOK CASE", "SMOK AMT", "TTL CASE", "TTL AMT",
+      "SMOK CASE", "SMOK AMT", "TTL CASE", "TTL AMT", "REMARK",
     ];
 
     const dataRows: (string | number)[][] = [];
@@ -76,7 +71,7 @@ function exportToExcel(entries: Entry[], usersMap: Record<string, { name: string
         u?.mobile ?? "",
         e.workingIn ?? "SQD",
         e.squadName ?? "",
-        "",                           // gap column (col I in spreadsheet)
+        "",
         e.trainNumber ?? "",
         e.A?.cases ?? 0,  e.A?.amount ?? 0,
         e.B?.cases ?? 0,  e.B?.amount ?? 0,
@@ -86,46 +81,33 @@ function exportToExcel(entries: Entry[], usersMap: Record<string, { name: string
         e.smoking?.cases ?? 0, e.smoking?.amount ?? 0,
         e.totalCases ?? 0,
         e.totalAmount ?? 0,
+        e.adminRemark ?? "",
       ]);
     }
 
     const sheetData = [title, headers, ...dataRows];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    // Column widths (approximate to match spreadsheet)
     ws["!cols"] = [
-      { wch: 7 },   // Sl No.
-      { wch: 10 },  // DATE
-      { wch: 6 },   // Base
-      { wch: 22 },  // NAME
-      { wch: 14 },  // PF No.
-      { wch: 13 },  // Mobile No.
-      { wch: 10 },  // WORKING IN
-      { wch: 9 },   // squad name
-      { wch: 2 },   // gap
-      { wch: 14 },  // TRAIN NO.
-      { wch: 8 }, { wch: 8 },   // A
-      { wch: 8 }, { wch: 8 },   // B
-      { wch: 8 }, { wch: 8 },   // C
-      { wch: 8 }, { wch: 8 },   // D
-      { wch: 8 }, { wch: 8 },   // E
-      { wch: 10 }, { wch: 10 }, // SMOK
-      { wch: 10 }, { wch: 10 }, // TTL
+      { wch: 7 }, { wch: 10 }, { wch: 6 }, { wch: 22 }, { wch: 14 }, { wch: 13 },
+      { wch: 10 }, { wch: 9 }, { wch: 2 }, { wch: 14 },
+      { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+      { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      { wch: 24 },
     ];
 
-    // Sanitize sheet name (Excel limit: 31 chars, no special chars)
     const safeName = sheetLabel.replace(/[/\\?*[\]:]/g, ".").slice(0, 31);
     XLSX.utils.book_append_sheet(wb, ws, safeName);
   }
 
-  // If single day, also export a combined "ALL" sheet
   if (dates.length > 1) {
     const allHeaders = [
       "Sl No.", "DATE", "Base", "NAME", "PF No.", "Mobile No.", "WORKING IN", "SQUAD",
       "TRAIN NO.",
       "A CASE", "A AMT", "B CASE", "B AMT", "C CASE", "C AMT",
       "D CASE", "D AMT", "E CASE", "E AMT",
-      "SMOK CASE", "SMOK AMT", "TTL CASE", "TTL AMT",
+      "SMOK CASE", "SMOK AMT", "TTL CASE", "TTL AMT", "REMARK",
     ];
     const allRows: (string | number)[][] = [allHeaders];
     let sl = 1;
@@ -149,12 +131,14 @@ function exportToExcel(entries: Entry[], usersMap: Record<string, { name: string
         e.smoking?.cases ?? 0, e.smoking?.amount ?? 0,
         e.totalCases ?? 0,
         e.totalAmount ?? 0,
+        e.adminRemark ?? "",
       ]);
     }
     const wsAll = XLSX.utils.aoa_to_sheet(allRows);
-    wsAll["!cols"] = Array(24).fill({ wch: 10 });
+    wsAll["!cols"] = Array(25).fill({ wch: 10 });
     wsAll["!cols"][3] = { wch: 22 };
     wsAll["!cols"][4] = { wch: 14 };
+    wsAll["!cols"][24] = { wch: 24 };
     XLSX.utils.book_append_sheet(wb, wsAll, "ALL DATA");
   }
 
@@ -165,6 +149,7 @@ function exportToExcel(entries: Entry[], usersMap: Record<string, { name: string
 
 function AdminEntriesPage() {
   const { q } = Route.useSearch();
+  const queryClient = useQueryClient();
 
   const { data: entries = [] } = useQuery({
     queryKey: ["admin", "entries"],
@@ -172,14 +157,14 @@ function AdminEntriesPage() {
   });
   const { data: users = [] } = useQuery({ queryKey: ["admin", "users"], queryFn: fetchAllUsers });
 
- const [dateFrom, setDateFrom] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [base, setBase] = useState("");
   const [collector, setCollector] = useState("");
   const [train, setTrain] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "draft" | "submitted">("");
+  const [remarkEntry, setRemarkEntry] = useState<Entry | null>(null);
 
-  // Pre-fill train search box from dashboard universal search (?q=...)
   useEffect(() => {
     if (q) {
       setTrain(q);
@@ -194,17 +179,16 @@ function AdminEntriesPage() {
     [users]
   );
 
-
   const collectors = users.filter(
     (u) => u.role?.toLowerCase() === "tc" || u.role?.toLowerCase() === "collector"
   );
   const bases = Array.from(new Set(collectors.map((c) => c.base)));
 
-const rows = useMemo(() => {
+  const rows = useMemo(() => {
     return entries
       .map((e) => ({ e, u: users.find((u) => u.id === e.collectorId) }))
       .filter(({ e, u }) => {
-        if (e.status === "draft") return false; // never show unsubmitted drafts to admin
+        if (e.status === "draft") return false;
         if (dateFrom && e.date < dateFrom) return false;
         if (dateTo && e.date > dateTo) return false;
         if (base && (!u || u.base !== base)) return false;
@@ -247,7 +231,7 @@ const rows = useMemo(() => {
         </button>
       </div>
 
-    {/* Filters */}
+      {/* Filters */}
       <div className="mb-4 grid gap-2 rounded-2xl border border-border bg-card p-4 shadow-card md:grid-cols-6">
         <select
           value={base}
@@ -268,7 +252,6 @@ const rows = useMemo(() => {
           ))}
         </select>
 
-        {/* From date */}
         <div className="flex flex-col gap-0.5">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             From
@@ -281,7 +264,6 @@ const rows = useMemo(() => {
           />
         </div>
 
-        {/* To date */}
         <div className="flex flex-col gap-0.5">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             To
@@ -320,17 +302,30 @@ const rows = useMemo(() => {
           <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               {[
-                "Date", "Collector", "PF No.", "Base", "Train", "Working In", "Squad",
+                "", "Date", "Collector", "PF No.", "Base", "Train", "Working In", "Squad",
                 "A", "B", "C", "D", "E", "Smoke",
                 "TTL Cases", "TTL Amt", "Status",
-              ].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-3">{h}</th>
+              ].map((h, i) => (
+                <th key={i} className="whitespace-nowrap px-3 py-3">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map(({ e, u }) => (
               <tr key={e.id} className="hover:bg-muted/40">
+                <td className="whitespace-nowrap px-3 py-3">
+                  <button
+                    onClick={() => setRemarkEntry(e)}
+                    title={e.adminRemark || "Add remark / flag"}
+                    className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
+                  >
+                    <Star
+                      className={`h-4 w-4 ${
+                        e.flagged ? "fill-warning text-warning" : "text-muted-foreground"
+                      }`}
+                    />
+                  </button>
+                </td>
                 <td className="whitespace-nowrap px-3 py-3 font-medium">{formatDate(e.date)}</td>
                 <td className="whitespace-nowrap px-3 py-3">
                   {u?.name ?? e.collectorName ?? "—"}
@@ -369,7 +364,7 @@ const rows = useMemo(() => {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={17} className="px-3 py-10 text-center text-sm text-muted-foreground">
                   No entries match the current filters.
                 </td>
               </tr>
@@ -377,6 +372,101 @@ const rows = useMemo(() => {
           </tbody>
         </table>
       </div>
+
+      {remarkEntry && (
+        <RemarkModal
+          entry={remarkEntry}
+          onClose={() => setRemarkEntry(null)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin", "entries"] })}
+        />
+      )}
     </AdminLayout>
+  );
+}
+
+function RemarkModal({
+  entry,
+  onClose,
+  onSaved,
+}: {
+  entry: Entry;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [remark, setRemark] = useState(entry.adminRemark ?? "");
+  const [flagged, setFlagged] = useState(entry.flagged ?? false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!entry.id) return;
+    setSaving(true);
+    try {
+      await Promise.all([
+        updateAdminRemark(entry.id, remark.trim()),
+        toggleEntryFlag(entry.id, flagged),
+      ]);
+      toast.success("Saved");
+      onSaved();
+      onClose();
+    } catch {
+      toast.error("Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-md rounded-2xl bg-card p-5 shadow-elevated">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-bold">
+            {formatDate(entry.date)} · Train {entry.trainNumber}
+          </h2>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <button
+          onClick={() => setFlagged((f) => !f)}
+          className={`mb-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+            flagged
+              ? "border-warning bg-warning/10 text-warning-foreground"
+              : "border-border bg-background text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <Star className={`h-4 w-4 ${flagged ? "fill-warning text-warning" : ""}`} />
+          {flagged ? "Flagged as important" : "Mark as important"}
+        </button>
+
+        <textarea
+          value={remark}
+          onChange={(e) => setRemark(e.target.value)}
+          rows={4}
+          placeholder="Add a remark for this entry…"
+          className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+        />
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold hover:bg-muted"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

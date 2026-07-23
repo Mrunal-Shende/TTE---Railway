@@ -72,6 +72,8 @@ export interface Entry {
   createdAt?: Timestamp;
   submittedAt?: Timestamp;
   edited?: boolean; // true once the TC has used their one allowed edit
+  adminRemark?: string; // remark added by admin, not visible/editable by TC
+  flagged?: boolean; // true if admin has starred/flagged this entry as important
 }
 
 export async function fetchMyEntries(uid: string): Promise<Entry[]> {
@@ -104,6 +106,13 @@ export async function submitEntries(ids: string[]) {
 export async function fetchAllEntries(): Promise<Entry[]> {
   const snap = await getDocs(query(collection(db, "entries"), orderBy("date", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Entry);
+}
+export async function updateAdminRemark(id: string, remark: string) {
+  await updateDoc(doc(db, "entries", id), { adminRemark: remark });
+}
+
+export async function toggleEntryFlag(id: string, flagged: boolean) {
+  await updateDoc(doc(db, "entries", id), { flagged });
 }
 
 export async function deleteEntry(id: string) {
